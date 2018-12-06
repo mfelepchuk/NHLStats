@@ -134,8 +134,8 @@ data <- data %>% mutate(clust = d_clust$classification)
 
 data2 <- data_w_names %>% mutate(clust=d_clust$classification)
 
-#write.csv(data, 'nhldata.csv')
-#write.csv(data2, 'nhldata2names.csv')
+write.csv(data, 'nhldata.csv')
+write.csv(data2, 'nhldata2names.csv')
 
 clusts <- data2 %>% group_by(clust) %>% summarise(n=n(),age=mean(Age),goals = mean(Gp100g), assists = mean(Ap100g), PM = mean(PMp100g), PIM = mean(PIMp100g))
 
@@ -156,6 +156,10 @@ cluster_data <- data %>% select(-Pos, -inPlayoffs,-Tm)
 
 scaled_data <- scale(cluster_data)
 
+kcl <- kmeans(scaled_data, 15)
+
+data2_15 <- cbind(data2, "clust15" =kcl$cluster)
+
 k.max <- 25
 
 wss <- sapply(1:k.max, 
@@ -167,6 +171,8 @@ plot(1:k.max, wss, type='b', pch=19, frame=FALSE)
 d_clust <- Mclust(as.matrix(scaled_data), G=1:25, modelNames = mclust.options("emModelNames"))
 d_clust$BIC
 
+write.csv(d_clust$classification, 'clusts.csv')
+
 set.seed(321)
 training <- sample(1:nrow(data), round(nrow(data)*.7))
 
@@ -175,11 +181,18 @@ reg_data_test <- reg_data[-training,]
 class_data_train <- class_data[training,]
 class_data_test <- class_data[-training,]
 
-kk <- kmeans(class_data_train, 5)
+class_train <- data2_15[training,]
+class_test <- data2_15[-training,]
+
+class_clust_dummies <- to_dummy(class_train, clust15)
+
+class_clust_train <- cbind(class_train, class_clust_dummies)
+
+kk <- kmeans(select(data2,-inPlayoffs), 15)
 
 model1 <- lm(W ~ ., data=reg_data_train)
 
-model2 <- glm(inPlayoffs~., data=class_data_train, family=binomial())
+model2 <- glm(inPlayoffs~V1+ V2+V3+V4+V5+V6+V7+V8+V9+V10+V11+V12+V13+V14, data=class_clust_train, family=binomial())
 
 
 fitControl <- trainControl(## 10-fold CV
@@ -194,7 +207,7 @@ gbmGrid <-  expand.grid(interaction.depth = c(1, 3, 5, 9),
                         shrinkage = 0.08,
                         n.minobsinnode = 15)
 
-lreg<-train(inPlayoffs~.,data=class_data_train,method="glm",family=binomial(), trControl=fitControl)
+lreg<-train(inPlayoffs~V1+ V2+V3+V4+V5+V6+V7+V8+V9+V10+V11+V12+V13+V14+Tm,data=class_clust_train,method="glm",family=binomial(), trControl=fitControl)
 
 cl <- makeCluster(detectCores()/2)
 registerDoParallel(cl)
